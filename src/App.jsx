@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 
+const API_URL = import.meta.env.VITE_SCRIPT_URL;
+
 const PHASES = [
   { id: 1, title: "Afbryd Loopet", weeks: "Uge 1–4", color: "#8B4513" },
   { id: 2, title: "Byg Nyt Fundament", weeks: "Uge 5–8", color: "#6B4423" },
@@ -204,25 +206,57 @@ export default function App() {
   const [essenceToday, setEssenceToday] = useState(null);
   const [shadowIdx, setShadowIdx] = useState(0);
   const [showSigns, setShowSigns] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const today = new Date().toLocaleDateString("da-DK", { weekday: "long", day: "numeric", month: "long" });
   const morning = MORNING[currentPhase];
   const evening = EVENING[currentPhase];
   const relation = RELATION[currentPhase];
 
+  // Load journal entries from Google Sheet on mount
+  useEffect(() => {
+    if (!API_URL) return;
+    fetch(`${API_URL}?action=getJournal`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.entries) setJournalEntries(data.entries);
+      })
+      .catch(err => console.error("Fejl ved hentning af journal:", err));
+  }, []);
+
   const toggleStep = (section, idx) => {
     const key = `${section}-${idx}`;
     setCompletedSteps(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const saveJournal = () => {
+  const saveJournal = async () => {
     if (!journalText.trim()) return;
-    setJournalEntries(prev => [
-      { text: journalText, date: new Date().toLocaleDateString("da-DK"), essence: essenceToday },
-      ...prev,
-    ]);
+    const entry = {
+      text: journalText,
+      date: new Date().toLocaleDateString("da-DK"),
+      essence: essenceToday,
+    };
+
+    // Save locally immediately
+    setJournalEntries(prev => [entry, ...prev]);
     setJournalText("");
     setEssenceToday(null);
+
+    // Save to Google Sheet
+    if (API_URL) {
+      setSaving(true);
+      try {
+        await fetch(API_URL, {
+          method: "POST",
+          mode: "no-cors",
+          headers: { "Content-Type": "text/plain" },
+          body: JSON.stringify({ action: "saveJournal", ...entry }),
+        });
+      } catch (err) {
+        console.error("Fejl ved gemning:", err);
+      }
+      setSaving(false);
+    }
   };
 
   const navItems = [
